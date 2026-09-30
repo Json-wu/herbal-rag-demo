@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # 为 1 时，启动从 GitHub 拉取选定古籍写入本地索引。提问时不访问网络。
     tcmoc_import: bool = False
     tcmoc_refresh: bool = False
+    langsmith_tracing: bool = False
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+    langsmith_api_key: str = ""
+    langsmith_project: str = "herbal-rag"
 
     model_config = SettingsConfigDict(
         env_file=str(ROOT / ".env"),
@@ -58,6 +62,10 @@ class Settings(BaseSettings):
     @property
     def llm_ready(self) -> bool:
         return self.llm_mode == "llm" and bool(self.llm_api_key.strip())
+
+    @property
+    def langsmith_enabled(self) -> bool:
+        return self.langsmith_tracing and bool(self.langsmith_api_key.strip())
 
 
 @lru_cache

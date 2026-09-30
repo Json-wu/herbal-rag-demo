@@ -32,8 +32,12 @@ cp .env.example .env
 | `LLM_MODEL` | 模型名 | `gpt-4o-mini` |
 | `RETRIEVAL_TOP_K` | 最多返回片段数 | `5` |
 | `RETRIEVAL_MIN_SCORE` | 相关度下限，0 到 1 | `0.5` |
+| `LANGSMITH_TRACING` | 是否把问答发到 LangSmith | `true` |
+| `LANGSMITH_ENDPOINT` | LangSmith 接口 | `https://api.smith.langchain.com` |
+| `LANGSMITH_API_KEY` | LangSmith 密钥 | 空 |
+| `LANGSMITH_PROJECT` | LangSmith 项目名 | `herbal-rag` |
 
-未填写 `LLM_API_KEY` 时，即使 `LLM_MODE=llm` 也会自动走摘录，避免现场没有密钥就无法演示。
+未填写 `LLM_API_KEY` 时，即使 `LLM_MODE=llm` 也会自动走摘录，避免现场没有密钥就无法演示。未填写 `LANGSMITH_API_KEY` 时不发送追踪。密钥写在服务器的 `/opt/herbal-rag/.env` 后重启即可，不必重新构建镜像。追踪里包含问题和命中片段，不要写入患者信息。
 
 ## 资料
 
@@ -43,7 +47,7 @@ cp .env.example .env
 
 另外内置了 9 段古籍摘录，来自[中医开源医典](https://github.com/lab99x/tcmoc)，断网也能演示。正文保持原文字句，来源字段写明书名、作者和仓库地址。
 
-服务器能访问 GitHub 时（生产 compose 已设 `TCMOC_IMPORT=1`），容器启动会再下载三部书的全文：《神农本草经》《黄帝内经素问》《本草纲目》，写入本机索引。提问时只查这份索引，不再请求 GitHub。仓库约有 700 个文件、250MB，没有许可证文件，其中还有《思考中医》这类近现代著作，所以只拉这三部，不把整库打进镜像。书已经在索引里时，重启不会重复下载；要更新时设 `TCMOC_REFRESH=1`。
+服务器能访问 GitHub 时（生产 compose 已设 `TCMOC_IMPORT=1`），启动和部署脚本都会从 `github.com` 克隆仓库，只检出《神农本草经》《黄帝内经素问》《本草纲目》的全文，写入本机索引。提问时只查这份索引。仓库约有 700 个文件、250MB，没有许可证文件，其中还有《思考中医》这类近现代著作，所以不把整库打进镜像。书已经在索引里时，重启不会重复克隆；要更新时设 `TCMOC_REFRESH=1`。
 
 这些笔记只记录性味、归经和分类用语，不写剂量和处方。
 
@@ -124,7 +128,7 @@ ssh-keygen -t ed25519 -f herbal-deploy -N ""
 | `SSH_PORT` | SSH 端口，不填则用 22 |
 | `DEPLOY_PATH` | 服务器目录，不填则用 `/opt/herbal-rag` |
 
-配好 Secrets 后，把包含 workflow 的提交推到 `main`。Actions 页能看到「构建镜像并部署」。成功时日志末尾是 `/api/health` 的 JSON。空库首次启动会先导入 15 篇内置资料，再从 GitHub 补上 3 部古籍，所以 `documents` 会大于 15，`tcmoc_documents` 为 3。已有索引卷不会重导内置摘录，但缺的古籍仍会补上。三部书大约几秒就能写入索引。
+配好 Secrets 后，把包含 workflow 的提交推到 `main`。Actions 页能看到「构建镜像并部署」。容器起来后，部署脚本会 `git clone` [中医开源医典](https://github.com/lab99x/tcmoc)，只检出三部书并写入索引。日志里能看到「从 GitHub 导入古籍」，成功时末尾的 `/api/health` 里 `tcmoc_documents` 为 3。克隆或写入失败时，这一步会变红，并打出容器日志。已在索引中的书会跳过。空库的 `documents` 会大于 15。已有索引卷不会重导内置摘录。
 
 浏览器打开 `http://服务器IP:4004`。在线模型只改服务器上的 `/opt/herbal-rag/.env`，文件不存在时流水线会创建一个空文件，服务以摘录模式运行。改完后重新推一次，或在 Actions 里手动运行该 workflow。
 

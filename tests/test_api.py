@@ -14,11 +14,16 @@ def test_health_examples_and_demo_path(settings):
         assert body["status"] == "ok"
         assert body["llm_mode"] == "extractive"
         assert body["llm_ready"] is False
+        assert body["langsmith"] is False
         assert body["documents"] == 15
 
         page = client.get("/")
         assert page.status_code == 200
         assert 'href="/favicon.ico"' in page.text
+        assert 'src="/static/logo.png"' in page.text
+        logo = client.get("/static/logo.png")
+        assert logo.status_code == 200
+        assert logo.headers["content-type"].startswith("image/png")
         icon = client.get("/favicon.ico")
         assert icon.status_code == 200
         assert icon.headers["content-type"].startswith("image/x-icon")

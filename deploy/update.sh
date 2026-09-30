@@ -21,7 +21,7 @@ docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d --remove-orphans
 docker logout "$ALIYUN_REGISTRY" >/dev/null 2>&1 || true
 
-check_health() {
+fetch_health() {
   if command -v curl >/dev/null 2>&1; then
     curl -fsS http://127.0.0.1:4004/api/health
     return
@@ -32,15 +32,34 @@ check_health() {
 
 i=0
 while [ "$i" -lt 40 ]; do
-  if check_health; then
+  if fetch_health; then
     echo
-    docker image prune -f >/dev/null 2>&1 || true
-    exit 0
+    break
   fi
   i=$((i + 1))
   sleep 3
 done
 
-echo "健康检查失败"
-docker compose -f docker-compose.prod.yml logs --tail 80
-exit 1
+if [ "$i" -ge 40 ]; then
+  echo "健康检查失败"
+  docker compose -f docker-compose.prod.yml logs --tail 80
+  exit 1
+fi
+
+echo "从 GitHub 导入古籍"
+if ! docker compose -f docker-compose.prod.yml exec -T herbal-rag \
+  python -m app.cli import-tcmoc; then
+  echo "古籍导入失败"
+  docker compose -f docker-compose.prod.yml logs --tail 120
+  exit 1
+fi
+
+body=$(fetch_health)
+echo "$body"
+echo "$body" | grep -q '"tcmoc_documents":3' || {
+  echo "古籍没有写入索引"
+  docker compose -f docker-compose.prod.yml logs --tail 120
+  exit 1
+}
+
+docker image prune -f >/dev/null 2>&1 || true

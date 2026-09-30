@@ -1,5 +1,6 @@
 """本地演示服务：页面、导入与问答。"""
 
+import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import Settings, get_settings
 from app.examples import EXAMPLES
 from app.generate.answer import answer_question
+from app.generate.tracing import apply_tracing
 from app.ingest.service import ingest_file, ingest_path
 from app.ingest.tcmoc import count_imported, import_books
 from app.retrieve.store import connect, count_documents, list_documents
@@ -22,6 +24,7 @@ _ALLOWED = {".md", ".txt", ".markdown"}
 
 def create_app(settings: Settings | None = None, *, auto_ingest: bool = False) -> FastAPI:
     settings = settings or get_settings()
+    apply_tracing(settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -32,10 +35,12 @@ def create_app(settings: Settings | None = None, *, auto_ingest: bool = False) -
                 if settings.sample_path.exists() and count_documents(conn) == 0:
                     ingest_path(conn, settings.sample_path)
                 if settings.tcmoc_import:
+                    print("开始从 GitHub 导入古籍", flush=True)
                     import_books(conn, refresh=settings.tcmoc_refresh)
             except Exception as exc:
                 app.state.tcmoc_error = str(exc)
                 print(f"中医开源医典导入失败：{exc}", flush=True)
+                traceback.print_exc()
             finally:
                 conn.close()
         yield
@@ -56,6 +61,7 @@ def create_app(settings: Settings | None = None, *, auto_ingest: bool = False) -
             "status": "ok",
             "llm_mode": settings.llm_mode,
             "llm_ready": settings.llm_ready,
+            "langsmith": settings.langsmith_enabled,
             "documents": count_documents(conn),
             "tcmoc_import": settings.tcmoc_import,
             "tcmoc_documents": count_imported(conn),

@@ -1,6 +1,9 @@
+import os
 from pathlib import Path
 
 import pytest
+
+os.environ["LANGSMITH_TRACING"] = "false"
 
 from app.config import Settings
 from app.retrieve.store import connect
@@ -20,6 +23,8 @@ def settings(tmp_path) -> Settings:
         uploads_dir=str(tmp_path / "uploads"),
         llm_mode="extractive",
         llm_api_key="",
+        langsmith_tracing=False,
+        langsmith_api_key="",
     )
 
 

@@ -1,10 +1,13 @@
 """调用 OpenAI 兼容接口。失败时由回答模块退回拒答。"""
 
 import httpx
+from langsmith import traceable
 
 from app.config import Settings
+from app.generate.tracing import llm_inputs, llm_output
 
 
+@traceable(name="chat", run_type="llm", process_inputs=llm_inputs, process_outputs=llm_output)
 def complete_chat(settings: Settings, system: str, user: str) -> str:
     url = settings.llm_base_url.rstrip("/") + "/chat/completions"
     payload = {

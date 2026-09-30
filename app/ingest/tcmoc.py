@@ -3,7 +3,9 @@
 只收录公版古籍，不拉取整库。提问时不再访问 GitHub。
 """
 
+import os
 import re
+import subprocess
 import tempfile
 import urllib.request
 from pathlib import Path
@@ -50,6 +52,46 @@ def fetch_text(url: str, timeout: float = 120) -> str:
         return response.read().decode("utf-8-sig")
 
 
+def checkout_books() -> dict[str, str]:
+    """用 git 从 github.com 只检出三部书。不走 raw.githubusercontent.com。"""
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    with tempfile.TemporaryDirectory() as tmp:
+        dest = Path(tmp) / "tcmoc"
+        clone = subprocess.run(
+            [
+                "git",
+                "clone",
+                "--depth",
+                "1",
+                "--filter=blob:none",
+                "--sparse",
+                f"{REPO}.git",
+                str(dest),
+            ],
+            env=env,
+            timeout=120,
+        )
+        if clone.returncode != 0:
+            raise RuntimeError("无法从 GitHub 克隆中医开源医典")
+        paths = [f"/books/{book['file']}" for book in BOOKS]
+        picked = subprocess.run(
+            ["git", "sparse-checkout", "set", "--no-cone", *paths],
+            cwd=dest,
+            env=env,
+            timeout=180,
+        )
+        if picked.returncode != 0:
+            raise RuntimeError("无法从中医开源医典检出选定古籍")
+        texts: dict[str, str] = {}
+        for book in BOOKS:
+            path = dest / "books" / book["file"]
+            if not path.is_file():
+                raise FileNotFoundError(book["file"])
+            texts[book["file"]] = path.read_text(encoding="utf-8-sig")
+        return texts
+
+
 def to_markdown(raw: str, title: str, source: str) -> str:
     text = raw.replace("\r\n", "\n").replace("\r", "\n")
     if text.startswith("\ufeff"):
@@ -85,8 +127,9 @@ def count_imported(conn) -> int:
     return int(row[0])
 
 
-def import_books(conn, *, refresh: bool = False, fetcher=fetch_text) -> list[dict]:
+def import_books(conn, *, refresh: bool = False, fetcher=None) -> list[dict]:
     results: list[dict] = []
+    texts: dict[str, str] | None = None
     for book in BOOKS:
         filename = book_filename(book["title"])
         exists = conn.execute(
@@ -104,7 +147,12 @@ def import_books(conn, *, refresh: bool = False, fetcher=fetch_text) -> list[dic
             )
             print(f"跳过\t{filename}\t已在索引中", flush=True)
             continue
-        raw = fetcher(book_url(book["file"]))
+        if fetcher is not None:
+            raw = fetcher(book_url(book["file"]))
+        else:
+            if texts is None:
+                texts = checkout_books()
+            raw = texts[book["file"]]
         markdown = to_markdown(raw, book["title"], book["source"])
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / filename

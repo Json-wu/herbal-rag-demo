@@ -3,11 +3,14 @@
 import json
 import re
 
+from langsmith import traceable
+
 from app.config import Settings
 from app.generate.citations import validate_citations
 from app.generate.llm import complete_chat
 from app.generate.prompt import build_prompt
 from app.generate.safety import classify
+from app.generate.tracing import documents_from_hits, response_output, visible_inputs
 from app.retrieve.search import Hit, search
 from app.schemas import AskResponse, Citation, HitOut
 from app.texts import EXTRACTIVE_PREFIX, INSUFFICIENT, MEDICAL_BOUNDARY
@@ -15,13 +18,19 @@ from app.texts import EXTRACTIVE_PREFIX, INSUFFICIENT, MEDICAL_BOUNDARY
 _JSON_OBJECT = re.compile(r"\{.*\}", re.S)
 
 
+@traceable(
+    name="herbal_rag",
+    run_type="chain",
+    process_inputs=visible_inputs,
+    process_outputs=response_output,
+)
 def answer_question(question: str, conn, settings: Settings) -> AskResponse:
     text = (question or "").strip()
     mode = "llm" if settings.llm_ready else "extractive"
     if not text:
         return _insufficient(mode, [])
     safety = classify(text)
-    hits = search(conn, text, settings.retrieval_top_k, settings.retrieval_min_score)
+    hits = _retrieve(text, conn, settings)
     if safety is not None:
         return AskResponse(
             answer=MEDICAL_BOUNDARY,
@@ -36,6 +45,16 @@ def answer_question(question: str, conn, settings: Settings) -> AskResponse:
     if settings.llm_ready:
         return _from_model(text, hits, settings)
     return _extractive(hits)
+
+
+@traceable(
+    name="retrieve",
+    run_type="retriever",
+    process_inputs=visible_inputs,
+    process_outputs=documents_from_hits,
+)
+def _retrieve(question: str, conn, settings: Settings) -> list[Hit]:
+    return search(conn, question, settings.retrieval_top_k, settings.retrieval_min_score)
 
 
 def _extractive(hits: list[Hit]) -> AskResponse:
