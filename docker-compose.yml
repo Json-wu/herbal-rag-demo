@@ -4,7 +4,7 @@ services:
   herbal-rag:
     build: .
     ports:
-      - "8000:8000"
+      - "4004:4004"
     env_file:
       - path: .env
         required: false

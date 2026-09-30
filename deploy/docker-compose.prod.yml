@@ -2,9 +2,11 @@ name: herbal-rag
 
 services:
   herbal-rag:
+    # 部署时由 deploy/update.sh 传入，值为
+    # $ALIYUN_REGISTRY/$ALIYUN_NAMESPACE/herbal-rag-demo:<本次提交 SHA>
     image: ${HERBAL_IMAGE:?HERBAL_IMAGE is required}
     ports:
-      - "8000:8000"
+      - "4004:4004"
     env_file:
       - .env
     volumes:

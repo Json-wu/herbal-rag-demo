@@ -57,10 +57,10 @@ python -m app.cli ingest path/to/notes.md
 ## 启动
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 4004
 ```
 
-浏览器打开 <http://127.0.0.1:8000>。库是空的时候，启动会自动导入 `data/sample/`。
+浏览器打开 <http://127.0.0.1:4004>。库是空的时候，启动会自动导入 `data/sample/`。
 
 页面也可以直接选择 `.md` / `.txt` 导入。
 
@@ -94,7 +94,7 @@ uvicorn app.main:app --reload --port 8000
 2. 在「访问凭证」里设置 Registry 的固定密码。这里用的是镜像仓库用户名和固定密码，不是 RAM 的 AccessKey。
 3. 记下公网 Registry 域名，例如 `registry.cn-hangzhou.aliyuncs.com` 或 `crpi-xxxx.cn-hangzhou.personal.cr.aliyuncs.com`。不要带 `https://`。
 
-服务器事先装好 Docker 和 Docker Compose 插件（命令是 `docker compose`）。部署用的 SSH 用户要能执行 `docker`。安全组放行 8000，以及你用来登录的 SSH 端口。ECS 若是 ARM 架构，把 workflow 里的 `platforms` 改成 `linux/arm64`。
+服务器事先装好 Docker 和 Docker Compose 插件（命令是 `docker compose`）。部署用的 SSH 用户要能执行 `docker`。安全组放行 4004，以及你用来登录的 SSH 端口。ECS 若是 ARM 架构，把 workflow 里的 `platforms` 改成 `linux/arm64`。
 
 在本机生成一把只用于部署的密钥，公钥写入服务器对应用户的 `~/.ssh/authorized_keys`：
 
@@ -118,7 +118,9 @@ ssh-keygen -t ed25519 -f herbal-deploy -N ""
 
 配好 Secrets 后，把包含 workflow 的提交推到 `main`。Actions 页能看到「构建镜像并部署」。成功时日志末尾是 `/api/health` 的 JSON，`documents` 为 6。
 
-浏览器打开 `http://服务器IP:8000`。在线模型只改服务器上的 `/opt/herbal-rag/.env`，文件不存在时流水线会创建一个空文件，服务以摘录模式运行。改完后重新推一次，或在 Actions 里手动运行该 workflow。
+浏览器打开 `http://服务器IP:4004`。在线模型只改服务器上的 `/opt/herbal-rag/.env`，文件不存在时流水线会创建一个空文件，服务以摘录模式运行。改完后重新推一次，或在 Actions 里手动运行该 workflow。
+
+`HERBAL_IMAGE` 不用单独申请。GitHub Actions 用三个值拼出镜像地址：`ALIYUN_REGISTRY`、`ALIYUN_NAMESPACE`，以及这次提交的 SHA。例如 `registry.cn-hangzhou.aliyuncs.com/你的命名空间/herbal-rag-demo:a1b2c3d...`。部署步骤把这个地址放进环境变量 `IMAGE`，`deploy/update.sh` 再把它导出为 `HERBAL_IMAGE`，Compose 启动时读这个变量。
 
 页面上的「导入资料」没有登录。服务暴露到公网时，任何人都可以往知识库添加 Markdown 或 TXT。这是教学演示，不要在上面处理真实患者信息。
 

@@ -23,11 +23,11 @@ docker logout "$ALIYUN_REGISTRY" >/dev/null 2>&1 || true
 
 check_health() {
   if command -v curl >/dev/null 2>&1; then
-    curl -fsS http://127.0.0.1:8000/api/health
+    curl -fsS http://127.0.0.1:4004/api/health
     return
   fi
   docker compose -f docker-compose.prod.yml exec -T herbal-rag \
-    python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/api/health').read().decode())"
+    python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:4004/api/health').read().decode())"
 }
 
 i=0
