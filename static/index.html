@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Herbal RAG Demo</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div>
+      <p class="eyebrow">Traditional Chinese Medicine</p>
+      <h1>Herbal RAG Demo</h1>
+    </div>
+    <p id="status">正在读取索引…</p>
+  </header>
+  <p class="banner">只用于资料检索与学习，不提供诊断、处方或个性化治疗建议。</p>
+  <main>
+    <section class="ask">
+      <label for="question">问题</label>
+      <textarea id="question" rows="5" placeholder="例如：黄芪的性味与归经是什么？"></textarea>
+      <div class="row">
+        <button id="ask" type="button">检索并回答</button>
+        <label class="file">导入资料
+          <input id="file" type="file" accept=".md,.txt,.markdown,text/plain">
+        </label>
+      </div>
+      <p id="form-note" class="note"></p>
+      <p class="hint">按 Command 或 Ctrl + Enter 也可以提问。</p>
+      <h2>示例</h2>
+      <div id="examples"></div>
+      <details>
+        <summary>已索引资料</summary>
+        <ul id="docs"></ul>
+      </details>
+    </section>
+    <section class="results">
+      <div id="answer" class="panel">
+        <h2>回答</h2>
+        <p class="placeholder">从左侧选择一个示例，或输入问题。回答只会依据检索到的原文。</p>
+      </div>
+      <div id="hits" class="panel">
+        <h2>检索片段</h2>
+        <p class="placeholder">相关原文、来源、章节、文件名和相关度会显示在这里。</p>
+      </div>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
