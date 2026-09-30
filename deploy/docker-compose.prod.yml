@@ -7,6 +7,9 @@ services:
     image: ${HERBAL_IMAGE:?HERBAL_IMAGE is required}
     ports:
       - "4004:4004"
+    environment:
+      # 香港等能访问 GitHub 的机器：启动时拉取选定古籍。已在索引中则跳过。
+      TCMOC_IMPORT: "1"
     env_file:
       - .env
     volumes:

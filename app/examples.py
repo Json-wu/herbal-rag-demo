@@ -8,6 +8,9 @@ EXAMPLES: list[ExampleQuestion] = [
     ExampleQuestion(id="siqi", question="什么是四气五味？", kind="answer"),
     ExampleQuestion(id="compare", question="金银花和连翘在资料中有什么不同？", kind="answer"),
     ExampleQuestion(id="mahuang", question="资料里对麻黄有哪些使用注意？", kind="answer"),
+    ExampleQuestion(id="classic-gancao", question="神农本草经怎样记载甘草？", kind="answer"),
+    ExampleQuestion(id="classic-huangqi", question="黄耆在本草纲目中的气味是什么？", kind="answer"),
+    ExampleQuestion(id="classic-rendong", question="忍冬和金银花是什么？", kind="answer"),
     ExampleQuestion(id="refuse", question="阿司匹林适用于哪些疾病？", kind="refuse"),
     ExampleQuestion(
         id="safety",

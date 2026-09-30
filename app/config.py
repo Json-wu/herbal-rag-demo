@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     database_path: str = "data/index/herbal.db"
     sample_dir: str = "data/sample"
     uploads_dir: str = "data/uploads"
+    # 为 1 时，启动从 GitHub 拉取选定古籍写入本地索引。提问时不访问网络。
+    tcmoc_import: bool = False
+    tcmoc_refresh: bool = False
 
     model_config = SettingsConfigDict(
         env_file=str(ROOT / ".env"),

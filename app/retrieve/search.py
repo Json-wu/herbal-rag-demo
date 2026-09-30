@@ -22,7 +22,7 @@ def search(conn: sqlite3.Connection, question: str, top_k: int, min_score: float
     query = fts_query(entities)
     if not entities or not query:
         return []
-    limit = max(top_k * 4, 20)
+    limit = max(top_k * 8, 40)
     try:
         rows = conn.execute(
             """
@@ -39,6 +39,7 @@ def search(conn: sqlite3.Connection, question: str, top_k: int, min_score: float
         ).fetchall()
     except sqlite3.OperationalError:
         return []
+    rows = _with_section_matches(conn, entities, rows)
     scored: list[Hit] = []
     for row in rows:
         haystack = f"{row['title']}\n{row['section']}\n{row['text']}"
@@ -57,5 +58,37 @@ def search(conn: sqlite3.Connection, question: str, top_k: int, min_score: float
                 score=round(score, 4),
             )
         )
-    scored.sort(key=lambda hit: (-hit.score, hit.filename, hit.chunk_id))
+    def sort_key(hit: Hit) -> tuple:
+        head = f"{hit.title}\n{hit.section}"
+        anchored = sum(1 for entity in entities if entity in head)
+        exact = any(hit.section == entity for entity in entities)
+        return (-hit.score, -anchored, 0 if exact else 1, hit.filename, hit.chunk_id)
+
+    scored.sort(key=sort_key)
     return scored[:top_k]
+
+
+def _with_section_matches(conn: sqlite3.Connection, entities: list[str], rows: list) -> list:
+    """长书里常见词会占满全文候选。章节名命中的片段要单独补进来。"""
+    terms = [entity for entity in entities if len(entity) >= 2]
+    if not terms:
+        return rows
+    clause = " OR ".join("c.section LIKE ?" for _ in terms)
+    extra = conn.execute(
+        f"""
+        SELECT c.id, c.section, c.text, d.title, d.source, d.filename,
+               0 AS rank
+        FROM chunks c
+        JOIN documents d ON d.id = c.document_id
+        WHERE {clause}
+        LIMIT 80
+        """,
+        [f"%{entity}%" for entity in terms],
+    ).fetchall()
+    seen = {row["id"] for row in rows}
+    merged = list(rows)
+    for row in extra:
+        if row["id"] not in seen:
+            seen.add(row["id"])
+            merged.append(row)
+    return merged

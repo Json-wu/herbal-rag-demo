@@ -51,6 +51,8 @@ def extract_entities(question: str) -> list[str]:
     entities: list[str] = []
     seen: set[str] = set()
     for run in _CJK_RUN.findall(text):
+        if len(run) > 2 and run.endswith("中"):
+            run = run[:-1]
         if run not in seen:
             seen.add(run)
             entities.append(run)

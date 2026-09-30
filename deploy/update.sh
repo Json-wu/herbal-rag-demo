@@ -31,7 +31,7 @@ check_health() {
 }
 
 i=0
-while [ "$i" -lt 20 ]; do
+while [ "$i" -lt 40 ]; do
   if check_health; then
     echo
     docker image prune -f >/dev/null 2>&1 || true

@@ -12,6 +12,7 @@ def test_entities_for_demo_questions():
     assert extract_entities("金银花和连翘在资料中有什么不同？") == ["金银花", "连翘"]
     assert extract_entities("资料里对麻黄有哪些使用注意？") == ["麻黄", "使用注意"]
     assert extract_entities("阿司匹林适用于哪些疾病？") == ["阿司匹林"]
+    assert extract_entities("黄耆在本草纲目中的气味是什么？") == ["黄耆", "本草纲目", "气味"]
 
 
 def test_sample_metadata_and_known_hits(conn, sample_dir):
@@ -26,10 +27,27 @@ def test_sample_metadata_and_known_hits(conn, sample_dir):
     assert all(hit.title == "黄芪" for hit in hits)
 
     compare = search(conn, "金银花和连翘在资料中有什么不同？", top_k=5, min_score=0.5)
-    assert {hit.title for hit in compare} == {"金银花", "连翘"}
+    assert {"金银花", "连翘"} <= {hit.title for hit in compare}
 
     missing = search(conn, "阿司匹林适用于哪些疾病？", top_k=5, min_score=0.5)
     assert missing == []
+
+
+def test_classic_excerpts_keep_their_source(conn, sample_dir):
+    ingest_path(conn, sample_dir)
+    gancao = search(conn, "神农本草经怎样记载甘草？", top_k=5, min_score=0.5)
+    assert gancao[0].title == "神农本草经·甘草"
+    assert "味甘，平" in gancao[0].text
+    assert "https://github.com/lab99x/tcmoc" in gancao[0].source
+
+    huangqi = search(conn, "黄耆在本草纲目中的气味是什么？", top_k=5, min_score=0.5)
+    assert huangqi[0].title == "本草纲目·黄耆"
+    assert "甘，微温" in huangqi[0].text
+    assert "本草纲目" in huangqi[0].source
+
+    rendong = search(conn, "忍冬和金银花是什么？", top_k=5, min_score=0.5)
+    assert rendong[0].title == "本草纲目·忍冬"
+    assert "故呼金银花" in rendong[0].text
 
 
 def test_index_persists_after_reopen(settings, sample_dir):

@@ -11,6 +11,7 @@ from app.config import Settings, get_settings
 from app.examples import EXAMPLES
 from app.generate.answer import answer_question
 from app.ingest.service import ingest_file, ingest_path
+from app.ingest.tcmoc import count_imported, import_books
 from app.retrieve.store import connect, count_documents, list_documents
 from app.schemas import AskRequest, AskResponse, DocumentOut, ExampleQuestion, IngestResult
 
@@ -24,11 +25,17 @@ def create_app(settings: Settings | None = None, *, auto_ingest: bool = False) -
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        if auto_ingest and settings.sample_path.exists():
+        app.state.tcmoc_error = ""
+        if auto_ingest:
             conn = connect(settings.db_path)
             try:
-                if count_documents(conn) == 0:
+                if settings.sample_path.exists() and count_documents(conn) == 0:
                     ingest_path(conn, settings.sample_path)
+                if settings.tcmoc_import:
+                    import_books(conn, refresh=settings.tcmoc_refresh)
+            except Exception as exc:
+                app.state.tcmoc_error = str(exc)
+                print(f"中医开源医典导入失败：{exc}", flush=True)
             finally:
                 conn.close()
         yield
@@ -50,6 +57,9 @@ def create_app(settings: Settings | None = None, *, auto_ingest: bool = False) -
             "llm_mode": settings.llm_mode,
             "llm_ready": settings.llm_ready,
             "documents": count_documents(conn),
+            "tcmoc_import": settings.tcmoc_import,
+            "tcmoc_documents": count_imported(conn),
+            "tcmoc_error": app.state.tcmoc_error,
         }
 
     @app.get("/api/examples", response_model=list[ExampleQuestion])
@@ -82,6 +92,10 @@ def create_app(settings: Settings | None = None, *, auto_ingest: bool = False) -
     @app.get("/")
     def index() -> FileResponse:
         return FileResponse(STATIC_DIR / "index.html")
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon() -> FileResponse:
+        return FileResponse(STATIC_DIR / "favicon.ico", media_type="image/x-icon")
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     return app

@@ -14,7 +14,15 @@ def test_health_examples_and_demo_path(settings):
         assert body["status"] == "ok"
         assert body["llm_mode"] == "extractive"
         assert body["llm_ready"] is False
-        assert body["documents"] == 6
+        assert body["documents"] == 15
+
+        page = client.get("/")
+        assert page.status_code == 200
+        assert 'href="/favicon.ico"' in page.text
+        icon = client.get("/favicon.ico")
+        assert icon.status_code == 200
+        assert icon.headers["content-type"].startswith("image/x-icon")
+        assert icon.content[:4] == b"\x00\x00\x01\x00"
 
         examples = client.get("/api/examples")
         assert [item["question"] for item in examples.json()] == [item.question for item in EXAMPLES]
@@ -23,7 +31,7 @@ def test_health_examples_and_demo_path(settings):
         payload = asked.json()
         assert "金银花味甘，性寒" in payload["answer"]
         assert "连翘味苦，性微寒" in payload["answer"]
-        assert {hit["title"] for hit in payload["hits"]} == {"金银花", "连翘"}
+        assert {"金银花", "连翘"} <= {hit["title"] for hit in payload["hits"]}
         for cite in payload["citations"]:
             assert payload["hits"][cite["marker"] - 1]["chunk_id"] == cite["chunk_id"]
 
@@ -35,7 +43,7 @@ def test_health_examples_and_demo_path(settings):
         assert blocked.json()["citations"] == []
 
         docs = client.get("/api/documents").json()
-        assert {item["filename"] for item in docs} == {
+        sample_names = {
             "黄芪.md",
             "甘草.md",
             "四气五味.md",
@@ -43,7 +51,10 @@ def test_health_examples_and_demo_path(settings):
             "连翘.md",
             "麻黄.md",
         }
-        assert all(item["source"] == SAMPLE_SOURCE for item in docs)
+        by_name = {item["filename"]: item for item in docs}
+        assert sample_names <= set(by_name)
+        assert all(by_name[name]["source"] == SAMPLE_SOURCE for name in sample_names)
+        assert "https://github.com/lab99x/tcmoc" in by_name["神农本草经-甘草.md"]["source"]
 
 
 def test_upload_markdown(settings):
