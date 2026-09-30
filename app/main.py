@@ -14,8 +14,17 @@ from app.generate.answer import answer_question
 from app.generate.tracing import apply_tracing
 from app.ingest.service import ingest_file, ingest_path
 from app.ingest.tcmoc import count_imported, import_books
+from app.retrieve.context import normalize_history
+from app.retrieve.recall import summary
 from app.retrieve.store import connect, count_documents, list_documents
-from app.schemas import AskRequest, AskResponse, DocumentOut, ExampleQuestion, IngestResult
+from app.schemas import (
+    AskRequest,
+    AskResponse,
+    DocumentOut,
+    ExampleQuestion,
+    IngestResult,
+    RecallSummary,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "static"
@@ -76,9 +85,14 @@ def create_app(settings: Settings | None = None, *, auto_ingest: bool = False) -
     def documents(conn=Depends(get_conn)) -> list[dict]:
         return list_documents(conn)
 
+    @app.get("/api/recall", response_model=RecallSummary)
+    def recall(conn=Depends(get_conn)) -> RecallSummary:
+        return summary(conn, settings)
+
     @app.post("/api/ask", response_model=AskResponse)
     def ask(body: AskRequest, conn=Depends(get_conn)) -> AskResponse:
-        return answer_question(body.question, conn, settings)
+        history = normalize_history([(item.role, item.content) for item in body.history])
+        return answer_question(body.question, conn, settings, history)
 
     @app.post("/api/ingest", response_model=IngestResult)
     def ingest(file: UploadFile, conn=Depends(get_conn)) -> dict:

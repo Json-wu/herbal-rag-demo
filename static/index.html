@@ -23,18 +23,27 @@
   <p class="banner">只用于资料检索与学习，不提供诊断、处方或个性化治疗建议。</p>
   <main>
     <section class="ask">
+      <div class="session-bar">
+        <h2>会话</h2>
+        <div id="sessions"></div>
+      </div>
       <label for="question">问题</label>
-      <textarea id="question" rows="5" placeholder="例如：黄芪的性味与归经是什么？"></textarea>
+      <textarea id="question" rows="4" placeholder="例如：黄芪的性味与归经是什么？也可以接着问：它的归经呢"></textarea>
       <div class="row">
         <button id="ask" type="button">检索并回答</button>
+        <button id="reset" type="button" class="ghost">新对话</button>
         <label class="file">导入资料
           <input id="file" type="file" accept=".md,.txt,.markdown,text/plain">
         </label>
       </div>
       <p id="form-note" class="note"></p>
-      <p class="hint">按 Command 或 Ctrl + Enter 也可以提问。</p>
+      <p class="hint">可以接着上一句追问。点示例会另起一轮。Command 或 Ctrl + Enter 也可以发送。</p>
       <h2>示例</h2>
       <div id="examples"></div>
+      <div id="recall-board" class="recall-board">
+        <h2>标注题指标</h2>
+        <p class="placeholder">正在计算召回率…</p>
+      </div>
       <details>
         <summary>已索引资料</summary>
         <ul id="docs"></ul>
@@ -42,8 +51,8 @@
     </section>
     <section class="results">
       <div id="answer" class="panel">
-        <h2>回答</h2>
-        <p class="placeholder">选择一个示例，或输入问题。回答只会依据检索到的原文。</p>
+        <h2>对话</h2>
+        <p class="placeholder">选择一个示例，或输入问题。可以接着上一句追问。回答只依据这一轮检索到的原文。</p>
       </div>
       <div id="hits" class="panel">
         <h2>检索片段</h2>

@@ -11,6 +11,8 @@ from app.generate.llm import complete_chat
 from app.generate.prompt import build_prompt
 from app.generate.safety import classify
 from app.generate.tracing import documents_from_hits, response_output, visible_inputs
+from app.retrieve.context import retrieval_query, safety_text
+from app.retrieve.recall import measure
 from app.retrieve.search import Hit, search
 from app.schemas import AskResponse, Citation, HitOut
 from app.texts import EXTRACTIVE_PREFIX, INSUFFICIENT, MEDICAL_BOUNDARY
@@ -24,27 +26,41 @@ _JSON_OBJECT = re.compile(r"\{.*\}", re.S)
     process_inputs=visible_inputs,
     process_outputs=response_output,
 )
-def answer_question(question: str, conn, settings: Settings) -> AskResponse:
+def answer_question(
+    question: str,
+    conn,
+    settings: Settings,
+    history: list[tuple[str, str]] | None = None,
+) -> AskResponse:
     text = (question or "").strip()
     mode = "llm" if settings.llm_ready else "extractive"
     if not text:
         return _insufficient(mode, [])
-    safety = classify(text)
-    hits = _retrieve(text, conn, settings)
+    prior = history or []
+    safety = classify(safety_text(text, prior))
+    hits = _retrieve(retrieval_query(text, prior), conn, settings)
+    report = measure(conn, text, settings)
+
+    def finish(response: AskResponse) -> AskResponse:
+        response.recall = report
+        return response
+
     if safety is not None:
-        return AskResponse(
-            answer=MEDICAL_BOUNDARY,
-            refused=True,
-            refusal_reason="medical_boundary",
-            mode=mode,
-            citations=[],
-            hits=[_hit_out(hit) for hit in hits],
+        return finish(
+            AskResponse(
+                answer=MEDICAL_BOUNDARY,
+                refused=True,
+                refusal_reason="medical_boundary",
+                mode=mode,
+                citations=[],
+                hits=[_hit_out(hit) for hit in hits],
+            )
         )
     if not hits:
-        return _insufficient(mode, [])
+        return finish(_insufficient(mode, []))
     if settings.llm_ready:
-        return _from_model(text, hits, settings)
-    return _extractive(hits)
+        return finish(_from_model(text, hits, settings, prior))
+    return finish(_extractive(hits))
 
 
 @traceable(
@@ -76,8 +92,13 @@ def _extractive(hits: list[Hit]) -> AskResponse:
     )
 
 
-def _from_model(question: str, hits: list[Hit], settings: Settings) -> AskResponse:
-    system, user = build_prompt(question, hits)
+def _from_model(
+    question: str,
+    hits: list[Hit],
+    settings: Settings,
+    history: list[tuple[str, str]] | None = None,
+) -> AskResponse:
+    system, user = build_prompt(question, hits, history)
     try:
         raw = complete_chat(settings, system, user)
     except Exception:

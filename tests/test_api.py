@@ -37,6 +37,11 @@ def test_health_examples_and_demo_path(settings):
         assert "金银花味甘，性寒" in payload["answer"]
         assert "连翘味苦，性微寒" in payload["answer"]
         assert {"金银花", "连翘"} <= {hit["title"] for hit in payload["hits"]}
+        assert payload["recall"]["recall_at_k"] == 1
+        assert payload["recall"]["relevant"] == 2
+        board = client.get("/api/recall")
+        assert board.status_code == 200
+        assert board.json()["recall_at_k"] == 1
         for cite in payload["citations"]:
             assert payload["hits"][cite["marker"] - 1]["chunk_id"] == cite["chunk_id"]
 

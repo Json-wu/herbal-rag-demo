@@ -6,6 +6,14 @@ const hitsEl = document.querySelector("#hits");
 const statusEl = document.querySelector("#status");
 const docsEl = document.querySelector("#docs");
 const formNote = document.querySelector("#form-note");
+const recallBoard = document.querySelector("#recall-board");
+const sessionsEl = document.querySelector("#sessions");
+const resetButton = document.querySelector("#reset");
+const STORAGE_KEY = "herbal-rag-sessions";
+const MAX_SESSIONS = 20;
+const MAX_TURNS = 12;
+
+let state = loadState();
 
 const kindLabel = {
   answer: "",
@@ -31,15 +39,214 @@ function focusHit(marker) {
   card.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-function renderAnswer(payload) {
+function percent(value) {
+  if (value == null) return "—";
+  return `${Math.round(value * 100)}%`;
+}
+
+function renderRecall(report) {
+  const box = document.createElement("div");
+  box.className = "metrics";
+  if (!report || !report.labeled) {
+    const note = document.createElement("p");
+    note.className = "note";
+    note.textContent = "这题没有标注应召回的原文，页面不估算召回率。";
+    return note;
+  }
+  if (!report.applicable) {
+    const note = document.createElement("p");
+    note.className = "note";
+    note.textContent = "这题没有应召回的资料，召回率和 Recall@" + report.k + " 不适用。";
+    return note;
+  }
+  box.append(
+    metricCard("召回率", percent(report.recall), `${report.recalled}/${report.relevant} 段达到相关度门槛`),
+    metricCard(
+      `Recall@${report.k}`,
+      percent(report.recall_at_k),
+      `前 ${report.k} 条含 ${report.recalled_at_k}/${report.relevant} 段`,
+    ),
+  );
+  const wrap = document.createElement("div");
+  wrap.append(box);
+  if (report.missed && report.missed.length) {
+    const missed = document.createElement("p");
+    missed.className = "note";
+    missed.textContent = `前 ${report.k} 条未包含：${report.missed.join("、")}`;
+    wrap.append(missed);
+  }
+  return wrap;
+}
+
+function metricCard(label, value, detail) {
+  const card = document.createElement("div");
+  card.className = "metric";
+  const number = document.createElement("strong");
+  number.textContent = value;
+  const name = document.createElement("span");
+  name.textContent = label;
+  const note = document.createElement("small");
+  note.textContent = detail;
+  card.append(number, name, note);
+  return card;
+}
+
+function blankSession() {
+  const id = window.crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+  return { id, title: "新对话", updatedAt: Date.now(), turns: [] };
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const data = raw ? JSON.parse(raw) : null;
+    if (data && Array.isArray(data.sessions) && data.sessions.length && data.currentId) {
+      return data;
+    }
+  } catch (_error) {
+    /* 损坏的本地记录直接另起一轮。 */
+  }
+  const session = blankSession();
+  return { currentId: session.id, sessions: [session] };
+}
+
+function currentSession() {
+  return state.sessions.find((item) => item.id === state.currentId) || state.sessions[0];
+}
+
+function persist() {
+  state.sessions = state.sessions.slice(0, MAX_SESSIONS);
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (_error) {
+    /* 浏览器拒绝写入时，当前页里的会话仍然保留。 */
+  }
+  renderSessions();
+}
+
+function renderSessions() {
+  sessionsEl.replaceChildren();
+  state.sessions.forEach((session) => {
+    const row = document.createElement("div");
+    row.className = session.id === state.currentId ? "session active" : "session";
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "session-title";
+    open.textContent = session.title;
+    open.addEventListener("click", () => selectSession(session.id));
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "session-delete";
+    remove.textContent = "删除";
+    remove.addEventListener("click", () => deleteSession(session.id));
+    row.append(open, remove);
+    sessionsEl.append(row);
+  });
+}
+
+function selectSession(id) {
+  state.currentId = id;
+  persist();
+  questionEl.value = "";
+  renderThread();
+}
+
+function deleteSession(id) {
+  state.sessions = state.sessions.filter((item) => item.id !== id);
+  if (!state.sessions.length) {
+    const session = blankSession();
+    state.sessions = [session];
+    state.currentId = session.id;
+  } else if (!state.sessions.some((item) => item.id === state.currentId)) {
+    state.currentId = state.sessions[0].id;
+  }
+  persist();
+  questionEl.value = "";
+  renderThread();
+}
+
+function startSession() {
+  const current = currentSession();
+  if (!current.turns.length) {
+    questionEl.value = "";
+    renderThread();
+    questionEl.focus();
+    return;
+  }
+  const session = blankSession();
+  state.sessions.unshift(session);
+  state.currentId = session.id;
+  persist();
+  questionEl.value = "";
+  renderThread();
+  questionEl.focus();
+}
+
+function renderThread() {
+  const session = currentSession();
   answerEl.className = "panel";
-  if (payload.refusal_reason) answerEl.classList.add(payload.refusal_reason);
   answerEl.replaceChildren();
   const title = document.createElement("h2");
-  title.textContent = "回答";
+  title.textContent = "对话";
+  answerEl.append(title);
+  if (!session.turns.length) {
+    const empty = document.createElement("p");
+    empty.className = "placeholder";
+    empty.textContent = "选择一个示例，或输入问题。可以接着上一句追问。回答只依据这一轮检索到的原文。";
+    answerEl.append(empty);
+    renderHits(null);
+    return;
+  }
+  const thread = document.createElement("div");
+  thread.className = "thread";
+  session.turns.forEach((turn, index) => {
+    thread.append(renderTurn(turn, index, index === session.turns.length - 1));
+  });
+  answerEl.append(thread);
+  showTurn(session.turns.length - 1);
+}
+
+function renderTurn(turn, index, latest) {
+  const block = document.createElement("article");
+  block.className = latest ? "turn active" : "turn";
+  if (turn.refusal_reason) block.classList.add(turn.refusal_reason);
+  const question = document.createElement("p");
+  question.className = "turn-q";
+  const jump = document.createElement("button");
+  jump.type = "button";
+  jump.textContent = turn.question;
+  jump.addEventListener("click", () => showTurn(index));
+  question.append(jump);
+  block.append(question, renderRecall(turn.recall));
   const body = document.createElement("div");
   body.className = "answer-text";
-  payload.answer.split(/(\[\d+\])/g).forEach((part) => {
+  fillAnswer(body, turn, index);
+  block.append(body);
+  if (turn.citations && turn.citations.length) {
+    const list = document.createElement("ul");
+    list.className = "cite-list";
+    turn.citations.forEach((cite) => {
+      const hit = turn.hits[cite.marker - 1];
+      if (!hit) return;
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "text-button";
+      button.textContent = `[${cite.marker}] ${hit.title} · ${hit.section} · ${hit.filename}`;
+      button.addEventListener("click", () => {
+        showTurn(index);
+        focusHit(String(cite.marker));
+      });
+      item.append(button);
+      list.append(item);
+    });
+    block.append(list);
+  }
+  return block;
+}
+
+function fillAnswer(body, turn, index) {
+  turn.answer.split(/(\[\d+\])/g).forEach((part) => {
     const match = part.match(/^\[(\d+)\]$/);
     if (!match) {
       appendText(body, part);
@@ -49,26 +256,21 @@ function renderAnswer(payload) {
     button.type = "button";
     button.className = "cite";
     button.textContent = part;
-    button.addEventListener("click", () => focusHit(match[1]));
+    button.addEventListener("click", () => {
+      showTurn(index);
+      focusHit(match[1]);
+    });
     body.append(button);
   });
-  answerEl.append(title, body);
-  if (!payload.citations.length) return;
-  const list = document.createElement("ul");
-  list.className = "cite-list";
-  payload.citations.forEach((cite) => {
-    const hit = payload.hits[cite.marker - 1];
-    if (!hit) return;
-    const item = document.createElement("li");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "text-button";
-    button.textContent = `[${cite.marker}] ${hit.title} · ${hit.section} · ${hit.filename}`;
-    button.addEventListener("click", () => focusHit(String(cite.marker)));
-    item.append(button);
-    list.append(item);
+}
+
+function showTurn(index) {
+  const session = currentSession();
+  const turn = session.turns[index];
+  document.querySelectorAll(".turn").forEach((item, itemIndex) => {
+    item.classList.toggle("active", itemIndex === index);
   });
-  answerEl.append(list);
+  renderHits(turn || null);
 }
 
 function renderHits(payload) {
@@ -77,6 +279,13 @@ function renderHits(payload) {
   const title = document.createElement("h2");
   title.textContent = "检索片段";
   hitsEl.append(title);
+  if (!payload) {
+    const empty = document.createElement("p");
+    empty.className = "placeholder";
+    empty.textContent = "相关原文、来源、章节、文件名和相关度会显示在这里。";
+    hitsEl.append(empty);
+    return;
+  }
   const note = document.createElement("p");
   note.className = "note";
   if (payload.refusal_reason === "medical_boundary") {
@@ -117,31 +326,47 @@ function renderHits(payload) {
   });
 }
 
-async function ask(question) {
-  questionEl.value = question;
+async function ask(question, options = {}) {
+  const text = question.trim();
+  if (!text) return;
+  if (options.fresh) startSession();
+  const session = currentSession();
+  const history = session.turns.slice(-4).flatMap((turn) => [
+    { role: "user", content: turn.question.slice(0, 2000) },
+    { role: "assistant", content: turn.answer.slice(0, 2000) },
+  ]);
+  questionEl.value = text;
   askButton.disabled = true;
   askButton.textContent = "检索中…";
   try {
     const response = await fetch("/api/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question: text, history }),
     });
     if (!response.ok) throw new Error(String(response.status));
     const payload = await response.json();
-    renderAnswer(payload);
-    renderHits(payload);
+    session.turns.push({
+      question: text,
+      answer: payload.answer,
+      refusal_reason: payload.refusal_reason,
+      hits: payload.hits,
+      citations: payload.citations,
+      recall: payload.recall,
+    });
+    session.turns = session.turns.slice(-MAX_TURNS);
+    if (session.title === "新对话") session.title = text.slice(0, 18);
+    session.updatedAt = Date.now();
+    state.sessions.sort((left, right) => right.updatedAt - left.updatedAt);
+    persist();
+    formNote.textContent = "";
+    questionEl.value = "";
+    renderThread();
     if (window.matchMedia("(max-width: 860px)").matches) {
       answerEl.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   } catch (_error) {
-    answerEl.className = "panel";
-    answerEl.replaceChildren();
-    const title = document.createElement("h2");
-    title.textContent = "回答";
-    const note = document.createElement("p");
-    note.textContent = "请求失败，请确认服务仍在运行。";
-    answerEl.append(title, note);
+    formNote.textContent = "请求失败，请确认服务仍在运行。";
   } finally {
     askButton.disabled = false;
     askButton.textContent = "检索并回答";
@@ -161,6 +386,29 @@ async function refreshMeta() {
   });
 }
 
+async function loadRecall() {
+  const response = await fetch("/api/recall");
+  if (!response.ok) return;
+  const board = await response.json();
+  recallBoard.replaceChildren();
+  const title = document.createElement("h2");
+  title.textContent = "标注题指标";
+  const line = document.createElement("p");
+  line.textContent = `${board.questions} 道可计算的题，平均召回率 ${percent(board.recall)}，平均 Recall@${board.k} ${percent(board.recall_at_k)}。`;
+  const list = document.createElement("ul");
+  list.className = "recall-list";
+  board.items.forEach((item) => {
+    const row = document.createElement("li");
+    if (!item.applicable) {
+      row.textContent = `${item.question} · 不适用`;
+    } else {
+      row.textContent = `${item.question} · 召回率 ${percent(item.recall)} · Recall@${board.k} ${percent(item.recall_at_k)}`;
+    }
+    list.append(row);
+  });
+  recallBoard.append(title, line, list);
+}
+
 async function init() {
   const examples = await fetch("/api/examples").then((response) => response.json());
   examples.forEach((item) => {
@@ -175,11 +423,24 @@ async function init() {
       tag.textContent = kindLabel[item.kind];
       button.append(tag);
     }
-    button.addEventListener("click", () => ask(item.question));
+    button.addEventListener("click", () => ask(item.question, { fresh: true }));
     examplesEl.append(button);
   });
-  await refreshMeta();
+  renderSessions();
+  renderThread();
+  try {
+    await refreshMeta();
+  } catch (_error) {
+    statusEl.textContent = "暂时读不到索引状态";
+  }
+  try {
+    await loadRecall();
+  } catch (_error) {
+    /* 指标接口失败时仍保留会话。 */
+  }
 }
+
+resetButton.addEventListener("click", startSession);
 
 askButton.addEventListener("click", () => {
   const question = questionEl.value.trim();
